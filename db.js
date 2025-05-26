@@ -1,4 +1,4 @@
-const logger = require('../logger');
+const logger = require('./logger');
 
 // Database abstraction layer supporting both SQLite and MongoDB
 let dbType = process.env.DB_TYPE || 'sqlite'; // Default to SQLite for simplicity
