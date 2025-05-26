@@ -1,0 +1,63 @@
+{
+  "name": "universal-mock-server",
+  "version": "3.0.0",
+  "description": "Complete universal mock server with SQLite/MongoDB support, binary files, and advanced features",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "migrate": "node migrate.js migrate",
+    "backup": "node backup.js backup",
+    "restore": "node backup.js restore",
+    "monitor": "node monitor.js metrics",
+    "monitor:watch": "node monitor.js watch",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "health": "node healthcheck.js",
+    "setup:windows": "scripts\\setup.bat",
+    "setup:linux": "bash scripts/setup.sh",
+    "test:connection": "node -e \"require('./db').connectDB().then(() => console.log('✅ Database connection successful')).catch(err => console.error('❌ Connection failed:', err))\"",
+    "switch:sqlite": "node scripts/switch-db.js sqlite",
+    "switch:mongodb": "node scripts/switch-db.js mongodb"
+  },
+  "dependencies": {
+    "archiver": "^6.0.1",
+    "compression": "^1.7.4",
+    "csv-writer": "^1.6.0",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "helmet": "^7.1.0",
+    "http-proxy-middleware": "^3.0.5",
+    "jexl": "^2.3.0",
+    "mime-types": "^2.1.35",
+    "mongodb": "^6.3.0",
+    "multer": "^1.4.5-lts.1",
+    "papaparse": "^5.5.3",
+    "path-to-regexp": "^6.2.1",
+    "sqlite3": "^5.1.6",
+    "universal-mock-server": "file:",
+    "unzipper": "^0.10.14",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "keywords": [
+    "mock",
+    "server",
+    "api",
+    "testing",
+    "mongodb",
+    "sqlite",
+    "scenarios",
+    "binary-files",
+    "universal"
+  ],
+  "author": "Universal Mock Server Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

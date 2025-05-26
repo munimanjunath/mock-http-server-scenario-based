@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7-jammy
+    container_name: universal-mockserver-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: mockserver
+    volumes:
+      - mongodb_data:/data/db
+      - ./backups:/backups
+    networks:
+      - mockserver-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mockserver:
+    build: .
+    container_name: universal-mockserver-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DB_TYPE: mongodb
+      MONGODB_URL: mongodb://admin:password123@mongodb:27017/mockserver?authSource=admin
+      DB_NAME: mockserver
+      NODE_ENV: production
+      LOG_LEVEL: info
+      CONSOLE_LOG_LEVEL: info
+    volumes:
+      - ./uploads:/usr/src/app/uploads
+      - ./files:/usr/src/app/files
+      - ./logs:/usr/src/app/logs
+      - ./backups:/usr/src/app/backups
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - mockserver-network
+
+volumes:
+  mongodb_data:
+    driver: local
+
+networks:
+  mockserver-network:
+    driver: bridge
