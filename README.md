@@ -1,6 +1,6 @@
-#  Mock HTTP Server with Multip Scenarios Support
+#  Mock HTTP Server with Multiple Scenarios Support
 
-A comprehensive, production-ready mock server supporting both SQLite and MongoDB databases with advanced file handling, cross-platform compatibility, and comprehensive logging.
+A comprehensive, ready to use mock http server supporting both SQLite and MongoDB databases with advanced file handling, cross-platform compatibility, and comprehensive logging.
 
 ## ?? Features
 
