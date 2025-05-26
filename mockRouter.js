@@ -1,5 +1,5 @@
 const express = require('express');
-const { DatabaseAdapter } = require('./db/db');
+const { DatabaseAdapter } = require('./db');
 const { getScenario, setScenario } = require('./scenarioManager');
 const Jexl = require('jexl');
 const { match } = require('path-to-regexp');

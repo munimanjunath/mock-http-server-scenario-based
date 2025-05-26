@@ -1,5 +1,5 @@
 const { createProxyMiddleware } = require('http-proxy-middleware');
-const { DatabaseAdapter } = require('./db/db');
+const { DatabaseAdapter } = require('./db');
 const { getScenario } = require('./scenarioManager');
 const logger = require('./logger');
 

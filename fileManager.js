@@ -5,7 +5,7 @@ const mime = require('mime-types');
 const archiver = require('archiver');
 const unzipper = require('unzipper');
 const csvWriter = require('csv-writer');
-const { DatabaseAdapter } = require('./db/db');
+const { DatabaseAdapter } = require('./db');
 const logger = require('./logger');
 
 // Ensure upload directories exist
