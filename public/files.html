@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>📁 File Manager - Universal Mock Server</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      min-height: 100vh;
+    }
+
+    .container {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      font-size: 2em;
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-links {
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 25px;
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+
+    .nav-links a {
+      color: white;
+      text-decoration: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: 500;
+      transition: all 0.3s ease;
+    }
+
+    .nav-links a:hover {
+      background: rgba(255,255,255,0.2);
+    }
+
+    .nav-links a.active {
+      background: rgba(255,255,255,0.3);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    input {
+      padding: 10px;
+      border-radius: 8px;
+      border: 2px solid #ccc;
+      width: 200px;
+      margin-right: 10px;
+    }
+
+    button {
+      padding: 10px 20px;
+      border-radius: 8px;
+      background: linear-gradient(45deg, #26c0d3, #20a8b8);
+      color: white;
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: linear-gradient(45deg, #20a8b8, #167d9d);
+    }
+
+    table {
+      width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 1px solid #eee;
+    }
+
+    th {
+      background-color: #f4f6fa;
+    }
+
+    .download-link {
+      color: #667eea;
+      text-decoration: underline;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      font-size: 0.8em;
+      border-radius: 12px;
+      background: #e1e5e9;
+      margin-right: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="nav-links">
+    <a href="/">🏠 Dashboard</a>
+    <a href="/history.html">📊 Request History</a>
+    <a href="/files.html" class="active">📁 File Manager</a>
+  </div>
+
+  <div class="container">
+    <h1>📁 File Manager</h1>
+    <div>
+      <input type="text" id="scenarioInput" placeholder="Filter by scenario">
+      <input type="text" id="filenameInput" placeholder="Filter by filename">
+      <button onclick="loadFiles()">🔍 Load Files</button>
+    </div>
+
+    <table id="filesTable">
+      <thead>
+        <tr>
+          <th>Filename</th>
+          <th>Scenario</th>
+          <th>Size</th>
+          <th>MIME Type</th>
+          <th>Download</th>
+        </tr>
+      </thead>
+      <tbody id="fileRows">
+        <tr><td colspan="5">🔄 Loading files...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    function formatSize(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    async function loadFiles() {
+      const scenario = document.getElementById('scenarioInput').value;
+      const filename = document.getElementById('filenameInput').value;
+      let query = [];
+
+      if (scenario) query.push(`scenario=${encodeURIComponent(scenario)}`);
+      if (filename) query.push(`filename=${encodeURIComponent(filename)}`);
+
+      const url = `/admin/files${query.length ? '?' + query.join('&') : ''}`;
+      const tableBody = document.getElementById('fileRows');
+      tableBody.innerHTML = '<tr><td colspan="5">🔄 Loading files...</td></tr>';
+
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (!data.files || data.files.length === 0) {
+          tableBody.innerHTML = '<tr><td colspan="5">📭 No files found</td></tr>';
+          return;
+        }
+
+        tableBody.innerHTML = '';
+        data.files.forEach(file => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${file.original_name}</td>
+            <td><span class="badge">${file.scenario || 'default'}</span></td>
+            <td>${formatSize(file.file_size)}</td>
+            <td>${file.mime_type}</td>
+			<a class="download-link" href="/files/${encodeURIComponent(file.filename)}" target="_blank">Download</a>
+          `;
+          tableBody.appendChild(row);
+        });
+      } catch (error) {
+        console.error('Error loading files:', error);
+        tableBody.innerHTML = '<tr><td colspan="5">❌ Failed to load files</td></tr>';
+      }
+    }
+
+    window.onload = loadFiles;
+  </script>
+</body>
+</html>
