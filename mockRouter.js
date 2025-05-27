@@ -18,6 +18,28 @@ if (proxyHandler.isProxyEnabled()) {
   });
 }
 
+// Function to calculate and apply delay
+async function applyDelay(mock) {
+  let delayMs = 0;
+  
+  if (mock.delay_type === 'fixed' && mock.delay_fixed > 0) {
+    delayMs = mock.delay_fixed;
+  } else if (mock.delay_type === 'random' && mock.delay_min >= 0 && mock.delay_max > 0) {
+    // Generate random delay between min and max
+    delayMs = Math.floor(Math.random() * (mock.delay_max - mock.delay_min + 1)) + mock.delay_min;
+  }
+  
+  if (delayMs > 0) {
+    logger.debug('Applying response delay', { 
+      mockId: mock.id || mock._id,
+      delayType: mock.delay_type,
+      delayMs: delayMs 
+    });
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+  }
+  
+  return delayMs;
+}
 router.use(async (req, res, next) => {
   const startTime = Date.now();
   const requestTimestamp = new Date().toISOString();
@@ -42,7 +64,7 @@ router.use(async (req, res, next) => {
   });
 
   // Function to log the request with response details
-  const logRequestHistory = (responseStatus, responseHeaders, responseBody, matchedMockId) => {
+  const logRequestHistory = (responseStatus, responseHeaders, responseBody, matchedMockId, delayApplied = 0) => {
     const processingTime = Date.now() - startTime;
     const scenarioAfter = getScenario();
     
@@ -63,7 +85,8 @@ router.use(async (req, res, next) => {
       responseHeaders,
       responseBody,
       matchedMockId,
-      processingTime
+      processingTime,
+      delayApplied
     });
   };
 
@@ -111,7 +134,7 @@ router.use(async (req, res, next) => {
     try {
       logger.debug('Trying scenario', { scenario, method: req.method, path: uri });
       
-      // Use the enhanced getMocks method that includes file_id, response_headers, and status_code
+      // Use the enhanced getMocks method that includes file_id, response_headers, and status_code delay fields
       const mocks = await DatabaseAdapter.getMocksEnhanced({
         scenario: scenario,
         method: req.method
@@ -143,8 +166,12 @@ router.use(async (req, res, next) => {
               scenario: mock.scenario,
               hasFile: !!mock.file_id,
               hasCustomHeaders: !!mock.response_headers,
-              statusCode: mock.status_code || 200
+              statusCode: mock.status_code || 200,
+              delayType: mock.delay_type || 'none'
             });
+            
+            // Apply delay if configured
+            const delayApplied = await applyDelay(mock);
             
             // Get the status code (default to 200 if not set)
             const statusCode = mock.status_code || 200;
@@ -174,7 +201,7 @@ router.use(async (req, res, next) => {
                 if (!file) {
                   logger.error('Referenced file not found', { fileId: mock.file_id, mockId: mock.id || mock._id });
                   const errorResponse = { error: 'Referenced file not found' };
-                  logRequestHistory(404, {}, errorResponse, mock.id || mock._id);
+                  logRequestHistory(404, {}, errorResponse, mock.id || mock._id, delayApplied);
                   return res.status(404).json(errorResponse);
                 }
                 
@@ -182,7 +209,7 @@ router.use(async (req, res, next) => {
                 if (!require('fs').existsSync(file.file_path)) {
                   logger.error('File not found on disk', { filePath: file.file_path, fileId: mock.file_id });
                   const errorResponse = { error: 'File not found' };
-                  logRequestHistory(404, {}, errorResponse, mock.id || mock._id);
+                  logRequestHistory(404, {}, errorResponse, mock.id || mock._id, delayApplied);
                   return res.status(404).json(errorResponse);
                 }
                 
@@ -205,7 +232,8 @@ router.use(async (req, res, next) => {
                   size: file.file_size,
                   mimeType: file.mime_type,
                   statusCode: statusCode,
-                  headers: responseHeaders
+                  headers: responseHeaders,
+                  delayApplied: delayApplied
                 });
                 
                 // Check if this mock response should trigger a scenario change
@@ -219,7 +247,7 @@ router.use(async (req, res, next) => {
                 }
                 
                 // Log the successful request
-                logRequestHistory(statusCode, responseHeaders, 'Binary file content', mock.id || mock._id);
+                logRequestHistory(statusCode, responseHeaders, 'Binary file content', mock.id || mock._id, delayApplied);
                 
                 // Set headers and status code, then pipe file
                 res.status(statusCode).set(responseHeaders);
@@ -230,7 +258,7 @@ router.use(async (req, res, next) => {
               } catch (fileError) {
                 logger.error('Error serving file from mock', { error: fileError.message, mockId: mock.id || mock._id });
                 const errorResponse = { error: 'Error serving file' };
-                logRequestHistory(500, {}, errorResponse, mock.id || mock._id);
+                logRequestHistory(500, {}, errorResponse, mock.id || mock._id, delayApplied);
                 return res.status(500).json(errorResponse);
               }
             }
@@ -246,7 +274,7 @@ router.use(async (req, res, next) => {
                 error: parseError.message
               });
               const errorResponse = { error: 'Invalid mock response format' };
-              logRequestHistory(500, {}, errorResponse, mock.id || mock._id);
+              logRequestHistory(500, {}, errorResponse, mock.id || mock._id, delayApplied);
               return res.status(500).json(errorResponse);
             }
 
@@ -281,7 +309,8 @@ router.use(async (req, res, next) => {
             logger.info('Sending mock response', {
               statusCode: responseStatusCode,
               headers: responseHeaders,
-              bodyType: typeof responseBody
+              bodyType: typeof responseBody,
+              delayApplied: delayApplied
             });
             
             // Check if this mock response should trigger a scenario change
@@ -295,7 +324,7 @@ router.use(async (req, res, next) => {
             }
             
             // Log the successful request
-            logRequestHistory(responseStatusCode, responseHeaders, responseBody, mock.id || mock._id);
+            logRequestHistory(responseStatusCode, responseHeaders, responseBody, mock.id || mock._id, delayApplied);
             
             // Set headers and send response with the appropriate status code
             res.set(responseHeaders);

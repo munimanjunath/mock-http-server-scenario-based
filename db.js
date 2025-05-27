@@ -128,6 +128,10 @@ async function initializeSQLiteTables() {
         status_code INTEGER DEFAULT 200,
         file_id INTEGER REFERENCES files(id),
         next_scenario TEXT,
+        delay_type TEXT DEFAULT 'none',
+        delay_fixed INTEGER DEFAULT 0,
+        delay_min INTEGER DEFAULT 0,
+        delay_max INTEGER DEFAULT 0,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(scenario, method, path, query, rule)
@@ -147,7 +151,8 @@ async function initializeSQLiteTables() {
         response_headers TEXT,
         response_body TEXT,
         matched_mock_id TEXT,
-        processing_time_ms INTEGER
+        processing_time_ms INTEGER,
+        delay_applied_ms INTEGER DEFAULT 0
       );
       
       CREATE TABLE IF NOT EXISTS files (
@@ -283,6 +288,78 @@ async function updateDatabaseSchema() {
         }
       });
     });
+    
+    // Check and add delay columns
+    const delayColumns = ['delay_type', 'delay_fixed', 'delay_min', 'delay_max'];
+    for (const columnName of delayColumns) {
+      await new Promise((resolve) => {
+        database.all("PRAGMA table_info(mock_responses)", (error, columns) => {
+          if (error) {
+            logger.error('Failed to get table info', { error: error.message });
+            resolve();
+            return;
+          }
+          
+          const hasColumn = columns.some(col => col.name === columnName);
+          if (!hasColumn) {
+            let columnDef = '';
+            switch(columnName) {
+              case 'delay_type':
+                columnDef = "ALTER TABLE mock_responses ADD COLUMN delay_type TEXT DEFAULT 'none'";
+                break;
+              case 'delay_fixed':
+                columnDef = "ALTER TABLE mock_responses ADD COLUMN delay_fixed INTEGER DEFAULT 0";
+                break;
+              case 'delay_min':
+                columnDef = "ALTER TABLE mock_responses ADD COLUMN delay_min INTEGER DEFAULT 0";
+                break;
+              case 'delay_max':
+                columnDef = "ALTER TABLE mock_responses ADD COLUMN delay_max INTEGER DEFAULT 0";
+                break;
+            }
+            
+            database.run(columnDef, (alterError) => {
+              if (alterError) {
+                logger.error(`Failed to add ${columnName} column`, { error: alterError.message });
+              } else {
+                logger.info(`Added ${columnName} column to mock_responses`);
+              }
+              resolve();
+            });
+          } else {
+            resolve();
+          }
+        });
+      });
+    }
+    
+    // Check and add delay_applied_ms to request_history
+    await new Promise((resolve) => {
+      database.all("PRAGMA table_info(request_history)", (error, columns) => {
+        if (error) {
+          logger.error('Failed to get table info', { error: error.message });
+          resolve();
+          return;
+        }
+        
+        const hasDelayApplied = columns.some(col => col.name === 'delay_applied_ms');
+        if (!hasDelayApplied) {
+          database.run(`
+            ALTER TABLE request_history 
+            ADD COLUMN delay_applied_ms INTEGER DEFAULT 0
+          `, (alterError) => {
+            if (alterError) {
+              logger.error('Failed to add delay_applied_ms column', { error: alterError.message });
+            } else {
+              logger.info('Added delay_applied_ms column to request_history');
+            }
+            resolve();
+          });
+        } else {
+          resolve();
+        }
+      });
+    });
   }
 }
 
@@ -325,6 +402,10 @@ class DatabaseAdapter {
           status_code: mockData.statusCode || 200,
           file_id: mockData.fileId || null,
           next_scenario: mockData.nextScenario || null,
+          delay_type: mockData.delayType || 'none',
+          delay_fixed: mockData.delayFixed || 0,
+          delay_min: mockData.delayMin || 0,
+          delay_max: mockData.delayMax || 0,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
@@ -336,7 +417,8 @@ class DatabaseAdapter {
           path: mockData.path, 
           hasFile: !!mockData.fileId,
           hasHeaders: !!mockData.responseHeaders,
-          statusCode: mockData.statusCode || 200 
+          statusCode: mockData.statusCode || 200,
+          delayType: mockData.delayType || 'none'
         }, Date.now() - startTime);
         
         return { id: result.upsertedId || 'updated', success: true };
@@ -346,8 +428,8 @@ class DatabaseAdapter {
         return new Promise((resolve, reject) => {
           const stmt = database.prepare(`
             INSERT OR REPLACE INTO mock_responses 
-            (scenario, method, path, query, rule, response, response_headers, status_code, file_id, next_scenario, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (scenario, method, path, query, rule, response, response_headers, status_code, file_id, next_scenario, delay_type, delay_fixed, delay_min, delay_max, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `);
           
           stmt.run([
@@ -361,6 +443,10 @@ class DatabaseAdapter {
             mockData.statusCode || 200,
             mockData.fileId || null,
             mockData.nextScenario || null,
+            mockData.delayType || 'none',
+            mockData.delayFixed || 0,
+            mockData.delayMin || 0,
+            mockData.delayMax || 0,
             new Date().toISOString()
           ], function(error) {
             if (error) {
@@ -373,7 +459,8 @@ class DatabaseAdapter {
                 path: mockData.path, 
                 hasFile: !!mockData.fileId,
                 hasHeaders: !!mockData.responseHeaders,
-                statusCode: mockData.statusCode || 200 
+                statusCode: mockData.statusCode || 200,
+                delayType: mockData.delayType || 'none'
               }, Date.now() - startTime);
               resolve({ id: this.lastID, success: true });
             }
@@ -412,7 +499,8 @@ class DatabaseAdapter {
           options.projection = {
             _id: 1, scenario: 1, method: 1, path: 1, query: 1,
             next_scenario: 1, rule: 1, created_at: 1, updated_at: 1, 
-            file_id: 1, response_headers: 1, status_code: 1
+            file_id: 1, response_headers: 1, status_code: 1,
+            delay_type: 1, delay_fixed: 1, delay_min: 1, delay_max: 1
           };
         }
         
@@ -426,7 +514,7 @@ class DatabaseAdapter {
         return new Promise((resolve, reject) => {
           let sql = 'SELECT ';
           if (filters.summary) {
-            sql += 'id, scenario, method, path, query, next_scenario, rule, file_id, response_headers, status_code, created_at, updated_at ';
+            sql += 'id, scenario, method, path, query, next_scenario, rule, file_id, response_headers, status_code, delay_type, delay_fixed, delay_min, delay_max, created_at, updated_at ';
           } else {
             sql += '* ';
           }
@@ -589,7 +677,8 @@ class DatabaseAdapter {
           response_headers: requestData.responseHeaders,
           response_body: requestData.responseBody,
           matched_mock_id: requestData.matchedMockId,
-          processing_time_ms: requestData.processingTime
+          processing_time_ms: requestData.processingTime,
+          delay_applied_ms: requestData.delayApplied || 0
         };
         
         await collection.insertOne(document);
@@ -601,8 +690,8 @@ class DatabaseAdapter {
             INSERT INTO request_history 
             (timestamp, scenario_before, scenario_after, method, path, query_string,
              request_headers, request_body, response_status, response_headers, 
-             response_body, matched_mock_id, processing_time_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             response_body, matched_mock_id, processing_time_ms, delay_applied_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `);
           
           stmt.run([
@@ -618,7 +707,8 @@ class DatabaseAdapter {
             JSON.stringify(requestData.responseHeaders),
             JSON.stringify(requestData.responseBody),
             requestData.matchedMockId,
-            requestData.processingTime
+            requestData.processingTime,
+            requestData.delayApplied || 0
           ], function(error) {
             if (error) {
               logger.error('SQLite logRequest failed', { error: error.message });
@@ -675,7 +765,8 @@ class DatabaseAdapter {
                   request_headers: JSON.parse(row.request_headers || '{}'),
                   request_body: JSON.parse(row.request_body || 'null'),
                   response_headers: JSON.parse(row.response_headers || '{}'),
-                  response_body: JSON.parse(row.response_body || 'null')
+                  response_body: JSON.parse(row.response_body || 'null'),
+                  delay_applied_ms: row.delay_applied_ms || 0
                 }));
                 
                 // Get total count

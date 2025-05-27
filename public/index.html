@@ -583,6 +583,62 @@
         .status-icon {
             font-size: 1.2em;
         }
+        
+        /* Delay configuration styles */
+        .delay-section {
+            border: 1px solid #e1e5e9;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
+        }
+        
+        .delay-type-selector {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .delay-config {
+            display: none;
+            margin-top: 15px;
+        }
+        
+        .delay-config.active {
+            display: block;
+        }
+        
+        .delay-badge {
+            background: linear-gradient(45deg, #ff9ff3, #f368e0);
+            padding: 6px 12px;
+            border-radius: 20px;
+            color: white;
+            font-size: 0.85em;
+        }
+        
+        .delay-info {
+            background: linear-gradient(135deg, #ffeaa7, #fdcb6e);
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            color: #2d3436;
+            font-size: 0.9em;
+        }
+        
+        .delay-input-group {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .delay-input-group input {
+            width: 150px;
+        }
+        
+        .delay-input-group span {
+            color: #666;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
@@ -593,7 +649,7 @@
     </div>
 
     <h1>🚀 Universal Mock Server</h1>
-    <p class="subtitle">Enhanced with SQLite/MongoDB support, binary files, custom headers, and status codes</p>
+    <p class="subtitle">Enhanced with SQLite/MongoDB support, binary files, custom headers, status codes, and response delays</p>
     
     <div class="container">
         <h2>🔧 Server Status & Statistics</h2>
@@ -726,6 +782,50 @@
                         <input type="text" id="rule" placeholder="e.g., inputPayload.userId == '123'">
                     </div>
                     
+                    <!-- Response Delay Configuration -->
+                    <div class="delay-section">
+                        <h4>⏱️ Response Delay Configuration</h4>
+                        <div class="delay-type-selector">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="radio" name="delayType" value="none" checked onclick="toggleDelayType('none')" style="width: auto; margin-right: 10px;">
+                                <span>No Delay</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="radio" name="delayType" value="fixed" onclick="toggleDelayType('fixed')" style="width: auto; margin-right: 10px;">
+                                <span>Fixed Delay</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="radio" name="delayType" value="random" onclick="toggleDelayType('random')" style="width: auto; margin-right: 10px;">
+                                <span>Random Delay</span>
+                            </label>
+                        </div>
+                        
+                        <div id="fixedDelayConfig" class="delay-config">
+                            <div class="form-group">
+                                <label for="delayFixed">Fixed Delay (milliseconds):</label>
+                                <input type="number" id="delayFixed" min="0" max="60000" placeholder="e.g., 1000" value="0">
+                                <div class="delay-info">
+                                    💡 Enter a fixed delay in milliseconds (1000ms = 1 second). The response will always be delayed by this amount.
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="randomDelayConfig" class="delay-config">
+                            <div class="form-group">
+                                <label>Random Delay Range (milliseconds):</label>
+                                <div class="delay-input-group">
+                                    <span>Min:</span>
+                                    <input type="number" id="delayMin" min="0" max="60000" placeholder="e.g., 500" value="0">
+                                    <span>Max:</span>
+                                    <input type="number" id="delayMax" min="0" max="60000" placeholder="e.g., 2000" value="0">
+                                </div>
+                                <div class="delay-info">
+                                    💡 Enter a minimum and maximum delay. Each request will have a random delay between these values.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <!-- JSON Response Section -->
                     <div id="jsonResponseSection" class="response-section">
                         <div class="form-group">
@@ -815,7 +915,8 @@
         <button onclick="generateSampleCSV()" class="upload-btn">📊 Generate Sample CSV</button>
         <button onclick="setupFileMockExample()" class="upload-btn">📁 Setup File Mock Example</button>
         <button onclick="setupErrorExamples()" class="delete-btn">❌ Setup Error Response Examples</button>
-        <p><em>These will create example scenarios with auto-transitions, sample files, and various status codes</em></p>
+        <button onclick="setupDelayExamples()" class="dropdown-btn">⏱️ Setup Delay Examples</button>
+        <p><em>These will create example scenarios with auto-transitions, sample files, various status codes, and delays</em></p>
     </div>
 
     <script>
@@ -873,6 +974,18 @@
             setupMockFileUpload();
             updateStatusDescription(); // Initialize status description
         };
+        
+        // Function to toggle delay type
+        function toggleDelayType(type) {
+            document.getElementById('fixedDelayConfig').classList.remove('active');
+            document.getElementById('randomDelayConfig').classList.remove('active');
+            
+            if (type === 'fixed') {
+                document.getElementById('fixedDelayConfig').classList.add('active');
+            } else if (type === 'random') {
+                document.getElementById('randomDelayConfig').classList.add('active');
+            }
+        }
         
         // Function to apply status code from preset dropdown
         function applyStatusCodePreset() {
@@ -1126,7 +1239,7 @@
             }
         }
 
-        // Enhanced createMock function to handle both JSON and file responses with status codes
+        // Enhanced createMock function to handle both JSON and file responses with status codes and delays
         async function createMock(event) {
             event.preventDefault();
             
@@ -1138,6 +1251,12 @@
             const rule = document.getElementById('rule').value || null;
             const responseHeaders = document.getElementById('responseHeaders').value || null;
             const nextScenario = document.getElementById('nextScenario').value || null;
+            
+            // Get delay configuration
+            const delayType = document.querySelector('input[name="delayType"]:checked').value;
+            const delayFixed = document.getElementById('delayFixed').value || 0;
+            const delayMin = document.getElementById('delayMin').value || 0;
+            const delayMax = document.getElementById('delayMax').value || 0;
             
             if (responseType === 'json') {
                 // Handle JSON response
@@ -1163,13 +1282,17 @@
                             response,
                             responseHeaders,
                             statusCode,
-                            nextScenario
+                            nextScenario,
+                            delayType,
+                            delayFixed,
+                            delayMin,
+                            delayMax
                         })
                     });
                     
                     if (apiResponse.ok) {
                         const result = await apiResponse.json();
-                        alert(`✅ Mock created successfully!\nStatus Code: ${statusCode}\n${result.customHeaders}\n${result.nextScenario}`);
+                        alert(`✅ Mock created successfully!\nStatus Code: ${statusCode}\n${result.customHeaders}\n${result.nextScenario}\n${result.delay}`);
                         resetMockForm();
                         loadAllScenarios();
                         loadStats();
@@ -1198,6 +1321,10 @@
                 if (rule) formData.append('rule', rule);
                 if (responseHeaders) formData.append('responseHeaders', responseHeaders);
                 if (nextScenario) formData.append('nextScenario', nextScenario);
+                formData.append('delayType', delayType);
+                formData.append('delayFixed', delayFixed);
+                formData.append('delayMin', delayMin);
+                formData.append('delayMax', delayMax);
                 formData.append('files', fileInput.files[0]);
                 
                 try {
@@ -1208,7 +1335,7 @@
                     
                     if (apiResponse.ok) {
                         const result = await apiResponse.json();
-                        alert(`✅ File-based mock created successfully!\n\nFile: ${result.filename}\nSize: ${formatFileSize(result.fileSize)}\nStatus Code: ${result.statusCode}\n${result.customHeaders}\n${result.nextScenario}`);
+                        alert(`✅ File-based mock created successfully!\n\nFile: ${result.filename}\nSize: ${formatFileSize(result.fileSize)}\nStatus Code: ${result.statusCode}\n${result.customHeaders}\n${result.nextScenario}\n${result.delay}`);
                         resetMockForm();
                         loadAllScenarios();
                         loadStats();
@@ -1231,6 +1358,8 @@
             updateStatusDescription();
             document.querySelector('input[name="responseType"][value="json"]').checked = true;
             toggleResponseType('json');
+            document.querySelector('input[name="delayType"][value="none"]').checked = true;
+            toggleDelayType('none');
         }
 
         async function generateSampleCSV() {
@@ -1517,6 +1646,14 @@
             const hasFile = !!mock.file_id;
             const statusCode = mock.status_code || 200;
             const statusClass = `status-${Math.floor(statusCode / 100)}xx`;
+            const delayType = mock.delay_type || 'none';
+            
+            let delayBadge = '';
+            if (delayType === 'fixed' && mock.delay_fixed > 0) {
+                delayBadge = `<span class="delay-badge">⏱️ ${mock.delay_fixed}ms</span>`;
+            } else if (delayType === 'random' && mock.delay_max > 0) {
+                delayBadge = `<span class="delay-badge">⏱️ ${mock.delay_min}-${mock.delay_max}ms</span>`;
+            }
             
             return `
                 <div class="mock-item" id="mock-${mockId}" onclick="toggleMockDetails('${mockId}')">
@@ -1528,6 +1665,7 @@
                             <span>${mock.path}</span>
                             ${mock.query ? `<span>?${mock.query}</span>` : ''}
                             ${hasFile ? '<span class="file-badge">📁 FILE</span>' : '<span class="file-badge">📄 JSON</span>'}
+                            ${delayBadge}
                             ${mock.rule ? `<span style="color: #666; font-size: 0.9em;">📋 Rule: ${mock.rule}</span>` : ''}
                         </div>
                         <div>
@@ -1584,7 +1722,7 @@
             }
         }
 
-        // Enhanced mock details display to show file information and status code
+        // Enhanced mock details display to show file information, status code, and delay info
         function displayMockDetails(container, mock) {
             const mockId = mock._id || mock.id;
             const statusCode = mock.statusCode || mock.status_code || 200;
@@ -1593,6 +1731,19 @@
             let detailsHtml = `
                 <div><strong>📊 Status Code:</strong> <span class="status-badge ${statusClass}">${statusCode}</span></div>
             `;
+            
+            // Display delay information
+            if (mock.delayType && mock.delayType !== 'none') {
+                if (mock.delayType === 'fixed' && mock.delayFixed > 0) {
+                    detailsHtml += `
+                        <div><strong>⏱️ Delay:</strong> Fixed ${mock.delayFixed}ms</div>
+                    `;
+                } else if (mock.delayType === 'random' && mock.delayMax > 0) {
+                    detailsHtml += `
+                        <div><strong>⏱️ Delay:</strong> Random ${mock.delayMin}-${mock.delayMax}ms</div>
+                    `;
+                }
+            }
             
             if (mock.responseHeaders) {
                 detailsHtml += `
@@ -1671,6 +1822,11 @@
                 timestamp: new Date().toISOString()
             }, null, 2);
             document.getElementById('nextScenario').value = 'FAP_RELEASED';
+            
+            // Set a fixed delay of 500ms
+            document.querySelector('input[name="delayType"][value="fixed"]').checked = true;
+            toggleDelayType('fixed');
+            document.getElementById('delayFixed').value = '500';
         }
 
         async function setupCompleteFlow() {
@@ -1681,14 +1837,19 @@
                     path: '/test/fap',
                     statusCode: 200,
                     response: { message: 'fap set' },
-                    nextScenario: 'FAP_RELEASED'
+                    nextScenario: 'FAP_RELEASED',
+                    delayType: 'fixed',
+                    delayFixed: 200
                 },
                 {
                     scenario: 'FAP_RELEASED',
                     method: 'GET',
                     path: '/test/fap',
                     statusCode: 200,
-                    response: { message: 'fap released' }
+                    response: { message: 'fap released' },
+                    delayType: 'random',
+                    delayMin: 100,
+                    delayMax: 500
                 },
                 {
                     scenario: 'FAP_RELEASED',
@@ -1696,7 +1857,9 @@
                     path: '/test/complete',
                     statusCode: 201,
                     response: { message: 'fap completed' },
-                    nextScenario: 'FAP_COMPLETED'
+                    nextScenario: 'FAP_COMPLETED',
+                    delayType: 'fixed',
+                    delayFixed: 1000
                 },
                 {
                     scenario: 'FAP_COMPLETED',
@@ -1721,7 +1884,7 @@
                 }
             }
 
-            alert(`✅ Complete FAP flow created!\n\nCreated ${successCount}/${mocks.length} mocks\nFAP → FAP_RELEASED → FAP_COMPLETED`);
+            alert(`✅ Complete FAP flow created!\n\nCreated ${successCount}/${mocks.length} mocks\nFAP → FAP_RELEASED → FAP_COMPLETED\n\nIncludes various delays for realistic response times`);
             loadAllScenarios();
             loadStats();
         }
@@ -1743,7 +1906,13 @@
             }, null, 2);
             document.getElementById('nextScenario').value = 'documents_accessed';
             
-            alert('📁 File mock example setup!\n\nNow select a PDF or any file to serve as the response.\nWhen GET /api/contract.pdf is called, the file will be served with status 200.');
+            // Set a random delay between 200-800ms
+            document.querySelector('input[name="delayType"][value="random"]').checked = true;
+            toggleDelayType('random');
+            document.getElementById('delayMin').value = '200';
+            document.getElementById('delayMax').value = '800';
+            
+            alert('📁 File mock example setup!\n\nNow select a PDF or any file to serve as the response.\nWhen GET /api/contract.pdf is called, the file will be served with status 200 and a random delay between 200-800ms.');
         }
 
         async function setupErrorExamples() {
@@ -1754,35 +1923,47 @@
                     path: '/api/unauthorized',
                     statusCode: 401,
                     response: { error: 'Unauthorized', message: 'Missing or invalid token' },
-                    responseHeaders: { "WWW-Authenticate": "Bearer realm=\"api\"" }
+                    responseHeaders: { "WWW-Authenticate": "Bearer realm=\"api\"" },
+                    delayType: 'fixed',
+                    delayFixed: 100
                 },
                 {
                     scenario: 'errors',
                     method: 'GET',
                     path: '/api/forbidden',
                     statusCode: 403,
-                    response: { error: 'Forbidden', message: 'You do not have permission to access this resource' }
+                    response: { error: 'Forbidden', message: 'You do not have permission to access this resource' },
+                    delayType: 'fixed',
+                    delayFixed: 150
                 },
                 {
                     scenario: 'errors',
                     method: 'GET',
                     path: '/api/notfound',
                     statusCode: 404,
-                    response: { error: 'Not Found', message: 'The requested resource does not exist' }
+                    response: { error: 'Not Found', message: 'The requested resource does not exist' },
+                    delayType: 'random',
+                    delayMin: 50,
+                    delayMax: 200
                 },
                 {
                     scenario: 'errors',
                     method: 'POST',
                     path: '/api/badrequest',
                     statusCode: 400,
-                    response: { error: 'Bad Request', message: 'Invalid input data', errors: ['field1 is required', 'field2 must be a number'] }
+                    response: { error: 'Bad Request', message: 'Invalid input data', errors: ['field1 is required', 'field2 must be a number'] },
+                    delayType: 'fixed',
+                    delayFixed: 200
                 },
                 {
                     scenario: 'errors',
                     method: 'GET',
                     path: '/api/servererror',
                     statusCode: 500,
-                    response: { error: 'Internal Server Error', message: 'An unexpected error occurred' }
+                    response: { error: 'Internal Server Error', message: 'An unexpected error occurred' },
+                    delayType: 'random',
+                    delayMin: 500,
+                    delayMax: 2000
                 }
             ];
 
@@ -1800,7 +1981,76 @@
                 }
             }
 
-            alert(`✅ Error response examples created!\n\nCreated ${successCount}/${errorMocks.length} error mocks in 'errors' scenario\n\nTry:\n- GET /api/unauthorized (401)\n- GET /api/forbidden (403)\n- GET /api/notfound (404)\n- POST /api/badrequest (400)\n- GET /api/servererror (500)`);
+            alert(`✅ Error response examples created!\n\nCreated ${successCount}/${errorMocks.length} error mocks in 'errors' scenario\n\nTry:\n- GET /api/unauthorized (401) - 100ms delay\n- GET /api/forbidden (403) - 150ms delay\n- GET /api/notfound (404) - Random 50-200ms delay\n- POST /api/badrequest (400) - 200ms delay\n- GET /api/servererror (500) - Random 500-2000ms delay`);
+            loadAllScenarios();
+            loadStats();
+        }
+
+        async function setupDelayExamples() {
+            const delayMocks = [
+                {
+                    scenario: 'performance',
+                    method: 'GET',
+                    path: '/api/fast',
+                    statusCode: 200,
+                    response: { message: 'Lightning fast response', latency: 'none' },
+                    delayType: 'none'
+                },
+                {
+                    scenario: 'performance',
+                    method: 'GET',
+                    path: '/api/normal',
+                    statusCode: 200,
+                    response: { message: 'Normal response time', latency: '300ms' },
+                    delayType: 'fixed',
+                    delayFixed: 300
+                },
+                {
+                    scenario: 'performance',
+                    method: 'GET',
+                    path: '/api/slow',
+                    statusCode: 200,
+                    response: { message: 'Slow response', latency: '2000ms' },
+                    delayType: 'fixed',
+                    delayFixed: 2000
+                },
+                {
+                    scenario: 'performance',
+                    method: 'GET',
+                    path: '/api/variable',
+                    statusCode: 200,
+                    response: { message: 'Variable response time', latency: '100-1000ms' },
+                    delayType: 'random',
+                    delayMin: 100,
+                    delayMax: 1000
+                },
+                {
+                    scenario: 'performance',
+                    method: 'GET',
+                    path: '/api/unstable',
+                    statusCode: 200,
+                    response: { message: 'Unstable network simulation', latency: '50-5000ms' },
+                    delayType: 'random',
+                    delayMin: 50,
+                    delayMax: 5000
+                }
+            ];
+
+            let successCount = 0;
+            for (const mock of delayMocks) {
+                try {
+                    const response = await fetch('/admin/mock', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(mock)
+                    });
+                    if (response.ok) successCount++;
+                } catch (error) {
+                    console.error('Error creating mock:', error);
+                }
+            }
+
+            alert(`✅ Delay examples created!\n\nCreated ${successCount}/${delayMocks.length} performance mocks in 'performance' scenario\n\nTry:\n- GET /api/fast - No delay\n- GET /api/normal - Fixed 300ms delay\n- GET /api/slow - Fixed 2s delay\n- GET /api/variable - Random 100-1000ms delay\n- GET /api/unstable - Random 50-5000ms delay\n\nPerfect for testing loading states and timeouts!`);
             loadAllScenarios();
             loadStats();
         }

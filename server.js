@@ -216,7 +216,19 @@ app.post('/admin/scenario', (req, res) => {
 // Create mock with file upload, custom headers, and status code
 app.post('/admin/mock/file', FileManager.getUploadMiddleware(), async (req, res) => {
   try {
-    const { scenario, method, path: fullPath, rule, nextScenario, responseHeaders, statusCode } = req.body;
+    const { 
+      scenario, 
+      method, 
+      path: fullPath, 
+      rule, 
+      nextScenario, 
+      responseHeaders, 
+      statusCode,
+      delayType,
+      delayFixed,
+      delayMin,
+      delayMax
+    } = req.body;
     
     logger.debug('File-based mock creation requested', {
       scenario,
@@ -226,6 +238,7 @@ app.post('/admin/mock/file', FileManager.getUploadMiddleware(), async (req, res)
       hasNextScenario: !!nextScenario,
       hasResponseHeaders: !!responseHeaders,
       statusCode: statusCode || 200,
+      delayType: delayType || 'none',
       fileCount: req.files?.length || 0
     });
     
@@ -280,7 +293,12 @@ app.post('/admin/mock/file', FileManager.getUploadMiddleware(), async (req, res)
       // Parse status code
       const parsedStatusCode = statusCode ? parseInt(statusCode) : 200;
       
-      // Create mock with file reference, headers, and status code
+      // Parse delay parameters
+      const parsedDelayFixed = delayFixed ? parseInt(delayFixed) : 0;
+      const parsedDelayMin = delayMin ? parseInt(delayMin) : 0;
+      const parsedDelayMax = delayMax ? parseInt(delayMax) : 0;
+      
+      // Create mock with file reference, headers, status code, and delay
       const mockData = {
         scenario,
         method,
@@ -291,7 +309,11 @@ app.post('/admin/mock/file', FileManager.getUploadMiddleware(), async (req, res)
         responseHeaders: parsedResponseHeaders,
         statusCode: parsedStatusCode,
         fileId: fileId,
-        nextScenario: nextScenario || null
+        nextScenario: nextScenario || null,
+        delayType: delayType || 'none',
+        delayFixed: parsedDelayFixed,
+        delayMin: parsedDelayMin,
+        delayMax: parsedDelayMax
       };
       
       const result = await DatabaseAdapter.createMockWithFile(mockData);
@@ -305,8 +327,16 @@ app.post('/admin/mock/file', FileManager.getUploadMiddleware(), async (req, res)
         filename: uploadedFile.originalname,
         statusCode: parsedStatusCode,
         hasCustomHeaders: !!parsedResponseHeaders,
-        nextScenario
+        nextScenario,
+        delayType: delayType || 'none'
       });
+      
+      let delayMessage = 'No delay configured';
+      if (delayType === 'fixed' && parsedDelayFixed > 0) {
+        delayMessage = `Fixed delay: ${parsedDelayFixed}ms`;
+      } else if (delayType === 'random' && parsedDelayMin >= 0 && parsedDelayMax > 0) {
+        delayMessage = `Random delay: ${parsedDelayMin}-${parsedDelayMax}ms`;
+      }
       
       res.json({
         message: 'File-based mock response saved',
@@ -317,7 +347,8 @@ app.post('/admin/mock/file', FileManager.getUploadMiddleware(), async (req, res)
         mimeType: uploadedFile.mimetype,
         statusCode: parsedStatusCode,
         customHeaders: parsedResponseHeaders ? 'Custom headers applied' : 'Using default headers',
-        nextScenario: nextScenario ? `Will auto-switch to "${nextScenario}" when triggered` : 'No auto-scenario switching'
+        nextScenario: nextScenario ? `Will auto-switch to "${nextScenario}" when triggered` : 'No auto-scenario switching',
+        delay: delayMessage
       });
     } catch (error) {
       logger.error('Error creating file-based mock', { error: error.message, requestBody: req.body });
@@ -329,9 +360,22 @@ app.post('/admin/mock/file', FileManager.getUploadMiddleware(), async (req, res)
   }
 });
 
-// Enhanced mock endpoint creation with response headers and status code support
+// Enhanced mock endpoint creation with response headers, status code, and delay support
 app.post('/admin/mock', async (req, res) => {
-  const { scenario, method, path: fullPath, rule, response, responseHeaders, statusCode, nextScenario } = req.body;
+  const { 
+    scenario, 
+    method, 
+    path: fullPath, 
+    rule, 
+    response, 
+    responseHeaders, 
+    statusCode, 
+    nextScenario,
+    delayType,
+    delayFixed,
+    delayMin,
+    delayMax
+  } = req.body;
   
   logger.debug('Mock creation requested', {
     scenario,
@@ -340,7 +384,8 @@ app.post('/admin/mock', async (req, res) => {
     hasRule: !!rule,
     hasResponseHeaders: !!responseHeaders,
     statusCode: statusCode || 200,
-    hasNextScenario: !!nextScenario
+    hasNextScenario: !!nextScenario,
+    delayType: delayType || 'none'
   });
   
   if (!scenario || !method || !fullPath || !response) {
@@ -370,6 +415,11 @@ app.post('/admin/mock', async (req, res) => {
     
     // Parse status code
     const parsedStatusCode = statusCode ? parseInt(statusCode) : 200;
+    
+    // Parse delay parameters
+    const parsedDelayFixed = delayFixed ? parseInt(delayFixed) : 0;
+    const parsedDelayMin = delayMin ? parseInt(delayMin) : 0;
+    const parsedDelayMax = delayMax ? parseInt(delayMax) : 0;
 
     const mockData = {
       scenario,
@@ -381,7 +431,11 @@ app.post('/admin/mock', async (req, res) => {
       responseHeaders: parsedResponseHeaders,
       statusCode: parsedStatusCode,
       fileId: null, // No file for JSON responses
-      nextScenario: nextScenario || null
+      nextScenario: nextScenario || null,
+      delayType: delayType || 'none',
+      delayFixed: parsedDelayFixed,
+      delayMin: parsedDelayMin,
+      delayMax: parsedDelayMax
     };
 
     const result = await DatabaseAdapter.createMockWithFile(mockData);
@@ -393,15 +447,24 @@ app.post('/admin/mock', async (req, res) => {
       path: cleanPath,
       statusCode: parsedStatusCode,
       hasCustomHeaders: !!parsedResponseHeaders,
-      nextScenario
+      nextScenario,
+      delayType: delayType || 'none'
     });
+    
+    let delayMessage = 'No delay configured';
+    if (delayType === 'fixed' && parsedDelayFixed > 0) {
+      delayMessage = `Fixed delay: ${parsedDelayFixed}ms`;
+    } else if (delayType === 'random' && parsedDelayMin >= 0 && parsedDelayMax > 0) {
+      delayMessage = `Random delay: ${parsedDelayMin}-${parsedDelayMax}ms`;
+    }
 
     res.json({
       message: 'Mock response saved',
       id: result.id,
       statusCode: parsedStatusCode,
       customHeaders: parsedResponseHeaders ? 'Custom headers applied' : 'Using headers from response body',
-      nextScenario: nextScenario ? `Will auto-switch to "${nextScenario}" when triggered` : 'No auto-scenario switching'
+      nextScenario: nextScenario ? `Will auto-switch to "${nextScenario}" when triggered` : 'No auto-scenario switching',
+      delay: delayMessage
     });
   } catch (error) {
     logger.error('Error creating mock', { error: error.message, requestBody: req.body });
@@ -458,7 +521,7 @@ app.get('/admin/mocks/summary', async (req, res) => {
   }
 });
 
-// Get detailed mock data by ID with file info
+// Get detailed mock data by ID with file info and delay info
 app.get('/admin/mock/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -509,12 +572,19 @@ app.get('/admin/mock/:id', async (req, res) => {
     // Include status code
     mock.statusCode = mock.status_code || 200;
     
+    // Include delay info
+    mock.delayType = mock.delay_type || 'none';
+    mock.delayFixed = mock.delay_fixed || 0;
+    mock.delayMin = mock.delay_min || 0;
+    mock.delayMax = mock.delay_max || 0;
+    
     logger.info('Mock details fetched', { 
       id, 
       scenario: mock.scenario, 
       hasFile: !!mock.file_id,
       hasCustomHeaders: !!mock.responseHeaders,
-      statusCode: mock.statusCode 
+      statusCode: mock.statusCode,
+      delayType: mock.delayType
     });
     res.json({ mock });
   } catch (error) {
@@ -774,5 +844,5 @@ app.listen(PORT, () => {
     environment: process.env.NODE_ENV || 'development',
     version: '3.2.0'
   });
-  console.log(`ðŸš€ Enhanced Universal Mock Server running at http://localhost:${PORT}`);
+  console.log(`í ½íº€ Enhanced Universal Mock Server running at http://localhost:${PORT}`);
 });

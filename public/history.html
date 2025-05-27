@@ -153,6 +153,7 @@
         }
         
         .status-2xx { background: linear-gradient(45deg, #2ed573, #7bed9f); }
+        .status-3xx { background: linear-gradient(45deg, #00d2d3, #54a0ff); }
         .status-4xx { background: linear-gradient(45deg, #ffa502, #ff6348); }
         .status-5xx { background: linear-gradient(45deg, #ff4757, #ff3742); }
         
@@ -169,6 +170,14 @@
             padding: 6px 12px;
             border-radius: 20px;
             color: #2d3436;
+            font-size: 0.85em;
+        }
+        
+        .delay-badge {
+            background: linear-gradient(45deg, #ff9ff3, #f368e0);
+            padding: 6px 12px;
+            border-radius: 20px;
+            color: white;
             font-size: 0.85em;
         }
         
@@ -218,6 +227,33 @@
             color: #6c757d;
         }
         
+        .performance-stats {
+            background: linear-gradient(135deg, #e3f2fd, #f3e5f5);
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .performance-stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .performance-stat-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .performance-stat-label {
+            font-size: 0.85em;
+            color: #666;
+        }
+        
         .empty-state {
             text-align: center;
             padding: 40px;
@@ -230,6 +266,15 @@
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 15px;
+        }
+        
+        .filter-badge {
+            background: linear-gradient(45deg, #74b9ff, #0984e3);
+            padding: 4px 8px;
+            border-radius: 12px;
+            color: white;
+            font-size: 0.8em;
+            margin-left: 10px;
         }
         
         @media (max-width: 768px) {
@@ -259,7 +304,7 @@
     
     <div class="container">
         <div class="info-banner">
-            <strong>📊 Enhanced with Universal Database:</strong> Advanced request tracking with improved performance for large datasets and comprehensive analytics.
+            <strong>📊 Enhanced Request Tracking:</strong> Now includes response delay information to help you analyze performance and debug timing issues.
         </div>
         
         <h2>Filters & Controls</h2>
@@ -279,13 +324,24 @@
             <select id="statusFilter">
                 <option value="">All Status Codes</option>
                 <option value="2">2xx Success</option>
+                <option value="3">3xx Redirect</option>
                 <option value="4">4xx Client Error</option>
                 <option value="5">5xx Server Error</option>
+            </select>
+            <select id="delayFilter">
+                <option value="">All Delays</option>
+                <option value="none">No Delay</option>
+                <option value="fast">Fast (< 100ms)</option>
+                <option value="normal">Normal (100-500ms)</option>
+                <option value="slow">Slow (500-2000ms)</option>
+                <option value="very-slow">Very Slow (> 2000ms)</option>
             </select>
             <input type="number" id="limitInput" value="100" min="10" max="1000" placeholder="Limit">
             <button onclick="loadHistory()" class="refresh-btn">🔄 Refresh</button>
             <button onclick="clearHistory()" class="clear-btn">🧹 Clear History</button>
         </div>
+        
+        <div id="activeFilters" style="margin-top: 10px;"></div>
     </div>
 
     <div class="container">
@@ -296,6 +352,7 @@
 
     <script>
         let allScenarios = [];
+        let currentHistory = [];
 
         window.onload = function() {
             loadScenarios();
@@ -325,12 +382,45 @@
                 const response = await fetch(`/admin/history?limit=${limit}`);
                 const data = await response.json();
                 
+                currentHistory = data.history;
                 displayHistory(data.history);
+                updateActiveFilters();
             } catch (error) {
                 document.getElementById('historyContainer').innerHTML = 
                     '<div class="empty-state">❌ Error loading history. Make sure the server is running and database is connected.</div>';
                 console.error('Error:', error);
             }
+        }
+
+        function updateActiveFilters() {
+            const pathFilter = document.getElementById('pathFilter').value;
+            const methodFilter = document.getElementById('methodFilter').value;
+            const scenarioFilter = document.getElementById('scenarioFilter').value;
+            const statusFilter = document.getElementById('statusFilter').value;
+            const delayFilter = document.getElementById('delayFilter').value;
+            
+            let activeFilters = [];
+            if (pathFilter) activeFilters.push(`Path: "${pathFilter}"`);
+            if (methodFilter) activeFilters.push(`Method: ${methodFilter}`);
+            if (scenarioFilter) activeFilters.push(`Scenario: ${scenarioFilter}`);
+            if (statusFilter) activeFilters.push(`Status: ${statusFilter}xx`);
+            if (delayFilter) activeFilters.push(`Delay: ${delayFilter}`);
+            
+            const activeFiltersDiv = document.getElementById('activeFilters');
+            if (activeFilters.length > 0) {
+                activeFiltersDiv.innerHTML = '<strong>Active filters:</strong> ' + 
+                    activeFilters.map(f => `<span class="filter-badge">${f}</span>`).join('');
+            } else {
+                activeFiltersDiv.innerHTML = '';
+            }
+        }
+
+        function categorizeDelay(delayMs) {
+            if (delayMs === 0) return 'none';
+            if (delayMs < 100) return 'fast';
+            if (delayMs < 500) return 'normal';
+            if (delayMs < 2000) return 'slow';
+            return 'very-slow';
         }
 
         function displayHistory(history) {
@@ -346,21 +436,61 @@
             const methodFilter = document.getElementById('methodFilter').value;
             const scenarioFilter = document.getElementById('scenarioFilter').value;
             const statusFilter = document.getElementById('statusFilter').value;
+            const delayFilter = document.getElementById('delayFilter').value;
 
             let filteredHistory = history.filter(item => {
                 if (pathFilter && !item.path.toLowerCase().includes(pathFilter)) return false;
                 if (methodFilter && item.method !== methodFilter) return false;
                 if (scenarioFilter && item.scenario_before !== scenarioFilter) return false;
                 if (statusFilter && !item.response_status.toString().startsWith(statusFilter)) return false;
+                
+                // Delay filter
+                if (delayFilter) {
+                    const delayMs = item.delay_applied_ms || 0;
+                    const delayCategory = categorizeDelay(delayMs);
+                    if (delayFilter !== delayCategory) return false;
+                }
+                
                 return true;
             });
 
-            let html = '';
+            // Calculate performance statistics
+            const totalRequests = filteredHistory.length;
+            const avgProcessingTime = totalRequests > 0 
+                ? Math.round(filteredHistory.reduce((sum, item) => sum + item.processing_time_ms, 0) / totalRequests)
+                : 0;
+            const avgDelay = totalRequests > 0 
+                ? Math.round(filteredHistory.reduce((sum, item) => sum + (item.delay_applied_ms || 0), 0) / totalRequests)
+                : 0;
+            const maxDelay = Math.max(...filteredHistory.map(item => item.delay_applied_ms || 0));
+
+            let html = `
+                <div class="performance-stats">
+                    <div class="performance-stat">
+                        <div class="performance-stat-value">${totalRequests}</div>
+                        <div class="performance-stat-label">Total Requests</div>
+                    </div>
+                    <div class="performance-stat">
+                        <div class="performance-stat-value">${avgProcessingTime}ms</div>
+                        <div class="performance-stat-label">Avg Processing Time</div>
+                    </div>
+                    <div class="performance-stat">
+                        <div class="performance-stat-value">${avgDelay}ms</div>
+                        <div class="performance-stat-label">Avg Delay Applied</div>
+                    </div>
+                    <div class="performance-stat">
+                        <div class="performance-stat-value">${maxDelay}ms</div>
+                        <div class="performance-stat-label">Max Delay Applied</div>
+                    </div>
+                </div>
+            `;
+
             filteredHistory.forEach((item, index) => {
                 const timestamp = new Date(item.timestamp).toLocaleString();
                 const statusClass = `status-${Math.floor(item.response_status / 100)}xx`;
                 const methodClass = `method-${item.method}`;
                 const hasScenarioChange = item.scenario_before !== item.scenario_after;
+                const delayApplied = item.delay_applied_ms || 0;
                 
                 html += `
                     <div class="history-item">
@@ -373,10 +503,12 @@
                                 <span class="scenario-badge">${item.scenario_before}</span>
                                 ${hasScenarioChange ? 
                                     `<span class="scenario-transition">→ ${item.scenario_after}</span>` : ''}
+                                ${delayApplied > 0 ? 
+                                    `<span class="delay-badge">⏱️ ${delayApplied}ms delay</span>` : ''}
                             </div>
                             <div class="timing-info">
                                 <span>🕒 ${timestamp}</span>
-                                <span>⚡ ${item.processing_time_ms}ms</span>
+                                <span>⚡ ${item.processing_time_ms}ms total</span>
                             </div>
                         </div>
                         <div class="history-details" id="details-${index}">
@@ -388,6 +520,8 @@
                                     ${item.query_string ? `<p><strong>Query:</strong> ${item.query_string}</p>` : ''}
                                     <p><strong>Timestamp:</strong> ${timestamp}</p>
                                     <p><strong>Processing Time:</strong> ${item.processing_time_ms}ms</p>
+                                    <p><strong>Delay Applied:</strong> ${delayApplied}ms ${delayApplied > 0 ? '(artificial delay)' : '(no delay)'}</p>
+                                    <p><strong>Actual Response Time:</strong> ${item.processing_time_ms - delayApplied}ms</p>
                                     ${item.matched_mock_id ? `<p><strong>Matched Mock ID:</strong> ${item.matched_mock_id}</p>` : ''}
                                     
                                     <h4>📋 Request Headers</h4>
@@ -405,6 +539,11 @@
                                     <p><strong>Scenario Before:</strong> ${item.scenario_before}</p>
                                     <p><strong>Scenario After:</strong> ${item.scenario_after}</p>
                                     ${hasScenarioChange ? '<p><strong>Scenario Changed:</strong> ✅ Yes</p>' : '<p><strong>Scenario Changed:</strong> ❌ No</p>'}
+                                    
+                                    <h4>⏱️ Performance Breakdown</h4>
+                                    <p><strong>Total Time:</strong> ${item.processing_time_ms}ms</p>
+                                    <p><strong>Artificial Delay:</strong> ${delayApplied}ms</p>
+                                    <p><strong>Server Processing:</strong> ${item.processing_time_ms - delayApplied}ms</p>
                                     
                                     <h4>📋 Response Headers</h4>
                                     <div class="json-display">${JSON.stringify(item.response_headers, null, 2)}</div>
@@ -450,10 +589,30 @@
         }
 
         // Add event listeners for filters
-        document.getElementById('pathFilter').addEventListener('input', debounce(loadHistory, 300));
-        document.getElementById('methodFilter').addEventListener('change', loadHistory);
-        document.getElementById('scenarioFilter').addEventListener('change', loadHistory);
-        document.getElementById('statusFilter').addEventListener('change', loadHistory);
+        document.getElementById('pathFilter').addEventListener('input', debounce(() => {
+            displayHistory(currentHistory);
+            updateActiveFilters();
+        }, 300));
+        
+        document.getElementById('methodFilter').addEventListener('change', () => {
+            displayHistory(currentHistory);
+            updateActiveFilters();
+        });
+        
+        document.getElementById('scenarioFilter').addEventListener('change', () => {
+            displayHistory(currentHistory);
+            updateActiveFilters();
+        });
+        
+        document.getElementById('statusFilter').addEventListener('change', () => {
+            displayHistory(currentHistory);
+            updateActiveFilters();
+        });
+        
+        document.getElementById('delayFilter').addEventListener('change', () => {
+            displayHistory(currentHistory);
+            updateActiveFilters();
+        });
 
         // Debounce function to avoid too many requests while typing
         function debounce(func, wait) {
