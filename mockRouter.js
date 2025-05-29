@@ -40,6 +40,7 @@ async function applyDelay(mock) {
   
   return delayMs;
 }
+
 router.use(async (req, res, next) => {
   const startTime = Date.now();
   const requestTimestamp = new Date().toISOString();
@@ -278,20 +279,34 @@ router.use(async (req, res, next) => {
               return res.status(500).json(errorResponse);
             }
 
+            // Check if this is a raw response (non-JSON content)
+            let isRawResponse = false;
+            let rawContent = null;
+            let rawContentType = 'application/json'; // default
+
+            if (mockResponse && mockResponse.__raw !== undefined && mockResponse.__contentType) {
+              isRawResponse = true;
+              rawContent = mockResponse.__raw;
+              rawContentType = mockResponse.__contentType;
+            }
+
             // Handle different response formats
             let responseStatusCode = statusCode; // Use the mock's status code
             let responseHeaders = {};
             let responseBody;
 
-            if (mockResponse && (mockResponse.statusCode !== undefined || mockResponse.body !== undefined || mockResponse.headers !== undefined)) {
+            if (!isRawResponse && mockResponse && (mockResponse.statusCode !== undefined || mockResponse.body !== undefined || mockResponse.headers !== undefined)) {
               // New format: { statusCode: 200, headers: {}, body: {...} }
               // Mock's status_code field takes precedence over response body's statusCode
               responseStatusCode = statusCode || mockResponse.statusCode || 200;
               responseHeaders = mockResponse.headers || {};
               responseBody = mockResponse.body;
-            } else {
+            } else if (!isRawResponse) {
               // Legacy format: direct response object
               responseBody = mockResponse;
+            } else {
+              // Raw response format
+              responseBody = rawContent;
             }
             
             // Apply custom headers if available (override response headers from JSON)
@@ -300,16 +315,27 @@ router.use(async (req, res, next) => {
                 ...responseHeaders,
                 ...customHeaders
               };
-              logger.debug('Applied custom headers to JSON response', {
+              logger.debug('Applied custom headers', {
                 mockId: mock.id || mock._id,
                 headers: responseHeaders
               });
+            }
+
+            // Set content-type based on response type
+            if (isRawResponse) {
+              // For raw responses, always set the content type from __contentType
+              responseHeaders['Content-Type'] = rawContentType;
+            } else if (!responseHeaders['Content-Type']) {
+              // For JSON responses, default to application/json if not specified
+              responseHeaders['Content-Type'] = 'application/json';
             }
 
             logger.info('Sending mock response', {
               statusCode: responseStatusCode,
               headers: responseHeaders,
               bodyType: typeof responseBody,
+              isRawResponse: isRawResponse,
+              contentType: responseHeaders['Content-Type'],
               delayApplied: delayApplied
             });
             
@@ -328,7 +354,13 @@ router.use(async (req, res, next) => {
             
             // Set headers and send response with the appropriate status code
             res.set(responseHeaders);
-            return res.status(responseStatusCode).json(responseBody);
+            
+            // Send response based on content type
+            if (isRawResponse) {
+              return res.status(responseStatusCode).send(responseBody);
+            } else {
+              return res.status(responseStatusCode).json(responseBody);
+            }
           } else {
             logger.debug('Mock rule evaluation failed', {
               mockId: mock.id || mock._id,

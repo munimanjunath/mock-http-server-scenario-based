@@ -694,13 +694,28 @@
                     <div style="display: flex; gap: 20px; margin-bottom: 20px;">
                         <label style="display: flex; align-items: center; cursor: pointer;">
                             <input type="radio" name="responseType" value="json" checked onclick="toggleResponseType('json')" style="width: auto; margin-right: 10px;">
-                            <span>📄 JSON Response</span>
+                            <span>📄 JSON/Text Response</span>
                         </label>
                         <label style="display: flex; align-items: center; cursor: pointer;">
                             <input type="radio" name="responseType" value="file" onclick="toggleResponseType('file')" style="width: auto; margin-right: 10px;">
                             <span>📁 File Response</span>
                         </label>
                     </div>
+                </div>
+                
+                <div class="form-group" id="contentTypeGroup">
+                    <label for="contentType">Content-Type:</label>
+                    <select id="contentType" onchange="updateResponseFormat()">
+                        <option value="application/json">application/json</option>
+                        <option value="text/plain">text/plain</option>
+                        <option value="text/html">text/html</option>
+                        <option value="application/xml">application/xml</option>
+                        <option value="text/xml">text/xml</option>
+                        <option value="text/css">text/css</option>
+                        <option value="application/javascript">application/javascript</option>
+                        <option value="custom">Custom...</option>
+                    </select>
+                    <input type="text" id="customContentType" style="display:none; margin-top:10px;" placeholder="e.g., application/x-custom">
                 </div>
                 
                 <form onsubmit="createMock(event)" id="mockForm">
@@ -829,7 +844,7 @@
                     <!-- JSON Response Section -->
                     <div id="jsonResponseSection" class="response-section">
                         <div class="form-group">
-                            <label for="responseJson">Response JSON:</label>
+                            <label for="responseJson" id="responseLabel">Response JSON:</label>
                             <textarea id="responseJson" placeholder='{"message": "success", "data": {...}}'></textarea>
                         </div>
                     </div>
@@ -1053,6 +1068,34 @@
             }
         }
 
+        function updateResponseFormat() {
+            const contentType = document.getElementById('contentType').value;
+            const customContentTypeInput = document.getElementById('customContentType');
+            const responseLabel = document.getElementById('responseLabel');
+            const responseJson = document.getElementById('responseJson');
+            
+            if (contentType === 'custom') {
+                customContentTypeInput.style.display = 'block';
+            } else {
+                customContentTypeInput.style.display = 'none';
+            }
+            
+            // Update label and placeholder based on content type
+            if (contentType === 'application/json') {
+                responseLabel.textContent = 'Response JSON:';
+                responseJson.placeholder = '{"message": "success", "data": {...}}';
+            } else if (contentType === 'text/html') {
+                responseLabel.textContent = 'Response HTML:';
+                responseJson.placeholder = '<html><body><h1>Hello World</h1></body></html>';
+            } else if (contentType === 'application/xml' || contentType === 'text/xml') {
+                responseLabel.textContent = 'Response XML:';
+                responseJson.placeholder = '<?xml version="1.0"?><root><message>Hello</message></root>';
+            } else {
+                responseLabel.textContent = 'Response Body:';
+                responseJson.placeholder = 'Enter your response content here...';
+            }
+        }
+
         function switchTab(tabId) {
             // Hide all tab contents
             document.querySelectorAll('.tab-content').forEach(content => {
@@ -1076,15 +1119,18 @@
             const fileSection = document.getElementById('fileResponseSection');
             const responseJson = document.getElementById('responseJson');
             const mockFileInput = document.getElementById('mockFileInput');
+            const contentTypeGroup = document.getElementById('contentTypeGroup');
             
             if (type === 'json') {
                 jsonSection.style.display = 'block';
                 fileSection.style.display = 'none';
+                contentTypeGroup.style.display = 'block';
                 responseJson.setAttribute('required', 'required');
                 mockFileInput.removeAttribute('required');
             } else {
                 jsonSection.style.display = 'none';
                 fileSection.style.display = 'block';
+                contentTypeGroup.style.display = 'none';
                 responseJson.removeAttribute('required');
                 mockFileInput.setAttribute('required', 'required');
             }
@@ -1252,6 +1298,16 @@
             const responseHeaders = document.getElementById('responseHeaders').value || null;
             const nextScenario = document.getElementById('nextScenario').value || null;
             
+            // Get content type
+            let contentType = document.getElementById('contentType').value;
+            if (contentType === 'custom') {
+                contentType = document.getElementById('customContentType').value;
+                if (!contentType) {
+                    alert('Please enter a custom content type');
+                    return;
+                }
+            }
+            
             // Get delay configuration
             const delayType = document.querySelector('input[name="delayType"]:checked').value;
             const delayFixed = document.getElementById('delayFixed').value || 0;
@@ -1259,16 +1315,34 @@
             const delayMax = document.getElementById('delayMax').value || 0;
             
             if (responseType === 'json') {
-                // Handle JSON response
-                const responseJson = document.getElementById('responseJson').value;
+                // Handle JSON/text response
+                const responseContent = document.getElementById('responseJson').value;
                 
                 let response;
-                try {
-                    response = JSON.parse(responseJson);
-                } catch (error) {
-                    alert('❌ Invalid JSON in response field');
-                    return;
+                // Only parse as JSON if content type is application/json
+                if (contentType === 'application/json') {
+                    try {
+                        response = JSON.parse(responseContent);
+                    } catch (error) {
+                        alert('❌ Invalid JSON in response field');
+                        return;
+                    }
+                } else {
+                    // For non-JSON content types, store as raw string
+                    response = { __raw: responseContent, __contentType: contentType };
                 }
+                
+                // Merge content-type into headers
+                let headers = {};
+                if (responseHeaders) {
+                    try {
+                        headers = JSON.parse(responseHeaders);
+                    } catch (e) {
+                        alert('❌ Invalid JSON in response headers field');
+                        return;
+                    }
+                }
+                headers['Content-Type'] = contentType;
                 
                 try {
                     const apiResponse = await fetch('/admin/mock', {
@@ -1280,7 +1354,7 @@
                             path,
                             rule,
                             response,
-                            responseHeaders,
+                            responseHeaders: JSON.stringify(headers),
                             statusCode,
                             nextScenario,
                             delayType,
@@ -1292,7 +1366,7 @@
                     
                     if (apiResponse.ok) {
                         const result = await apiResponse.json();
-                        alert(`✅ Mock created successfully!\nStatus Code: ${statusCode}\n${result.customHeaders}\n${result.nextScenario}\n${result.delay}`);
+                        alert(`✅ Mock created successfully!\nContent-Type: ${contentType}\nStatus Code: ${statusCode}\n${result.customHeaders}\n${result.nextScenario}\n${result.delay}`);
                         resetMockForm();
                         loadAllScenarios();
                         loadStats();
@@ -1355,7 +1429,10 @@
             document.getElementById('selectedMockFile').innerHTML = '';
             document.getElementById('statusCode').value = '200';
             document.getElementById('statusCodePresets').value = '';
+            document.getElementById('contentType').value = 'application/json';
+            document.getElementById('customContentType').style.display = 'none';
             updateStatusDescription();
+            updateResponseFormat();
             document.querySelector('input[name="responseType"][value="json"]').checked = true;
             toggleResponseType('json');
             document.querySelector('input[name="delayType"][value="none"]').checked = true;
